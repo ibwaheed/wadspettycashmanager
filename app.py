@@ -284,9 +284,14 @@ def api_delete_transaction(tid):
 
 
 def seed_data():
-    if User.query.count() == 0:
-        username = os.environ.get('APP_USERNAME', 'admin')
-        password = os.environ.get('APP_PASSWORD', 'admin123')
+    username = os.environ.get('APP_USERNAME', 'admin')
+    password = os.environ.get('APP_PASSWORD', 'admin123')
+
+    user = User.query.first()
+    if user:
+        user.username = username
+        user.password_hash = generate_password_hash(password)
+    else:
         user = User(
             username=username,
             password_hash=generate_password_hash(password)
