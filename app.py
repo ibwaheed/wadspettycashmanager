@@ -2,13 +2,16 @@ import os
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from config import Config
 from models import db, Transaction, User
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 app = Flask(__name__)
 app.config.from_object(Config)
 db.init_app(app)
+
+MAX_ATTEMPTS = 5
+LOCKOUT_MINUTES = 0.5
 
 
 def login_required(f):
@@ -81,17 +84,35 @@ def login():
         return redirect(url_for('dashboard'))
 
     error = None
-    if request.method == 'POST':
+    locked = False
+
+    user = User.query.first()
+
+    if user and user.locked_until and user.locked_until > datetime.utcnow():
+        remaining = int((user.locked_until - datetime.utcnow()).total_seconds())
+        locked = True
+        error = f'Account locked. Try again in {remaining} seconds.'
+
+    if request.method == 'POST' and not locked:
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
 
-        user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password_hash, password):
+            user.failed_attempts = 0
+            user.locked_until = None
+            db.session.commit()
             session['logged_in'] = True
             session['username'] = user.username
             return redirect(url_for('dashboard'))
         else:
-            error = 'Invalid username or password'
+            user.failed_attempts = (user.failed_attempts or 0) + 1
+            if user.failed_attempts >= MAX_ATTEMPTS:
+                user.locked_until = datetime.utcnow() + timedelta(seconds=30)
+                error = f'Too many failed attempts. Account locked for 30 seconds.'
+            else:
+                remaining = MAX_ATTEMPTS - user.failed_attempts
+                error = f'Invalid username or password. {remaining} attempt(s) remaining.'
+            db.session.commit()
 
     return render_template('login.html', error=error)
 
@@ -283,48 +304,49 @@ def api_delete_transaction(tid):
     return jsonify({'message': 'Deleted'})
 
 
-def seed_data():
-    username = os.environ.get('APP_USERNAME', 'admin')
-    password = os.environ.get('APP_PASSWORD', 'admin123')
+# ---- Init DB (runs on import, works with gunicorn) ----
 
-    user = User.query.first()
-    if user:
-        user.username = username
-        user.password_hash = generate_password_hash(password)
-    else:
-        user = User(
-            username=username,
-            password_hash=generate_password_hash(password)
-        )
-        db.session.add(user)
-
-    if Transaction.query.count() == 0:
-        opening = Transaction(
-            type='credit',
-            amount=200.0,
-            description='Opening Balance',
-            date=datetime(2024, 1, 1).date(),
-            staff_name='Opening',
-            status='settled',
-            receipt='yes'
-        )
-        replenishment = Transaction(
-            type='credit',
-            amount=4800.0,
-            description='Replenishment from FIN Department',
-            date=datetime(2024, 1, 2).date(),
-            staff_name='FIN',
-            status='settled',
-            receipt='yes'
-        )
-        db.session.add_all([opening, replenishment])
-
-    db.session.commit()
-
-
-if __name__ == '__main__':
+def init_db():
     with app.app_context():
         db.create_all()
-        seed_data()
+        username = os.environ.get('APP_USERNAME', 'admin')
+        password = os.environ.get('APP_PASSWORD', 'admin123')
+        user = User.query.first()
+        if user:
+            user.username = username
+            user.password_hash = generate_password_hash(password)
+        else:
+            user = User(
+                username=username,
+                password_hash=generate_password_hash(password),
+                failed_attempts=0
+            )
+            db.session.add(user)
+        if Transaction.query.count() == 0:
+            opening = Transaction(
+                type='credit',
+                amount=200.0,
+                description='Opening Balance',
+                date=datetime(2024, 1, 1).date(),
+                staff_name='Opening',
+                status='settled',
+                receipt='yes'
+            )
+            replenishment = Transaction(
+                type='credit',
+                amount=4800.0,
+                description='Replenishment from FIN Department',
+                date=datetime(2024, 1, 2).date(),
+                staff_name='FIN',
+                status='settled',
+                receipt='yes'
+            )
+            db.session.add_all([opening, replenishment])
+        db.session.commit()
+
+
+init_db()
+
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
