@@ -1,11 +1,25 @@
-from flask import Flask, render_template, request, jsonify
+import os
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from config import Config
-from models import db, Transaction
+from models import db, Transaction, User
 from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 
 app = Flask(__name__)
 app.config.from_object(Config)
 db.init_app(app)
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('logged_in'):
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Unauthorized'}), 401
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
 
 
 def parse_date(d):
@@ -58,23 +72,59 @@ def unreported_count():
     return db.session.query(db.func.count(Transaction.id))\
         .filter(Transaction.type == 'debit', Transaction.reported == 'no').scalar()
 
+
+# ---- Auth Routes ----
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if session.get('logged_in'):
+        return redirect(url_for('dashboard'))
+
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password_hash, password):
+            session['logged_in'] = True
+            session['username'] = user.username
+            return redirect(url_for('dashboard'))
+        else:
+            error = 'Invalid username or password'
+
+    return render_template('login.html', error=error)
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
+# ---- Protected Pages ----
+
 @app.route('/')
+@login_required
 def dashboard():
     return render_template('dashboard.html')
 
 
 @app.route('/transactions')
+@login_required
 def transactions_page():
     return render_template('transactions.html')
 
 
+# ---- Protected API ----
+
 @app.route('/api/dashboard')
+@login_required
 def api_dashboard():
     total_credit, total_debit, balance = calc_balance()
     pending = calc_pending()
     settled_debits = calc_settled_debits()
     pending_count = count_pending()
-
     status = balance_status(balance)
 
     today = datetime.utcnow().date()
@@ -103,6 +153,7 @@ def api_dashboard():
 
 
 @app.route('/api/transactions')
+@login_required
 def api_transactions():
     search = request.args.get('search', '').strip()
     ttype = request.args.get('type', '')
@@ -124,7 +175,6 @@ def api_transactions():
         query = query.filter(Transaction.type == ttype)
     if status:
         query = query.filter(Transaction.status == status)
-
     scanned = request.args.get('scanned', '')
     if scanned:
         query = query.filter(Transaction.scanned == scanned)
@@ -146,6 +196,7 @@ def api_transactions():
 
 
 @app.route('/api/transactions/<int:tid>')
+@login_required
 def api_get_transaction(tid):
     t = db.session.get(Transaction, tid)
     if not t:
@@ -154,6 +205,7 @@ def api_get_transaction(tid):
 
 
 @app.route('/api/transactions', methods=['POST'])
+@login_required
 def api_create_transaction():
     data = request.get_json()
     if not data:
@@ -184,6 +236,7 @@ def api_create_transaction():
 
 
 @app.route('/api/transactions/<int:tid>', methods=['PUT'])
+@login_required
 def api_update_transaction(tid):
     t = db.session.get(Transaction, tid)
     if not t:
@@ -220,6 +273,7 @@ def api_update_transaction(tid):
 
 
 @app.route('/api/transactions/<int:tid>', methods=['DELETE'])
+@login_required
 def api_delete_transaction(tid):
     t = db.session.get(Transaction, tid)
     if not t:
@@ -230,28 +284,36 @@ def api_delete_transaction(tid):
 
 
 def seed_data():
-    if Transaction.query.count() > 0:
-        return
+    if User.query.count() == 0:
+        username = os.environ.get('APP_USERNAME', 'admin')
+        password = os.environ.get('APP_PASSWORD', 'admin123')
+        user = User(
+            username=username,
+            password_hash=generate_password_hash(password)
+        )
+        db.session.add(user)
 
-    opening = Transaction(
-        type='credit',
-        amount=200.0,
-        description='Opening Balance',
-        date=datetime(2024, 1, 1).date(),
-        staff_name='Opening',
-        status='settled',
-        receipt='yes'
-    )
-    replenishment = Transaction(
-        type='credit',
-        amount=4800.0,
-        description='Replenishment from FIN Department',
-        date=datetime(2024, 1, 2).date(),
-        staff_name='FIN',
-        status='settled',
-        receipt='yes'
-    )
-    db.session.add_all([opening, replenishment])
+    if Transaction.query.count() == 0:
+        opening = Transaction(
+            type='credit',
+            amount=200.0,
+            description='Opening Balance',
+            date=datetime(2024, 1, 1).date(),
+            staff_name='Opening',
+            status='settled',
+            receipt='yes'
+        )
+        replenishment = Transaction(
+            type='credit',
+            amount=4800.0,
+            description='Replenishment from FIN Department',
+            date=datetime(2024, 1, 2).date(),
+            staff_name='FIN',
+            status='settled',
+            receipt='yes'
+        )
+        db.session.add_all([opening, replenishment])
+
     db.session.commit()
 
 
@@ -259,6 +321,5 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         seed_data()
-    import os
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
