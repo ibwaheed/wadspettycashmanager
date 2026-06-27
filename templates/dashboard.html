@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-chart-pie"></i> Dashboard</h1>
+    <p class="page-subtitle">Petty cash overview at a glance</p>
+</div>
+
+<div id="replenish-alert" class="alert alert-critical" style="display:none">
+    <i class="fas fa-exclamation-triangle"></i>
+    <span>Balance is critically low (<strong id="alert-balance"></strong>). Request replenishment from FIN.</span>
+</div>
+
+<div class="dashboard-grid">
+    <div class="metric-card balance-card" id="balance-card">
+        <div class="metric-icon"><i class="fas fa-coins"></i></div>
+        <div class="metric-body">
+            <span class="metric-label">Current Balance</span>
+            <span class="metric-value" id="balance-value">--</span>
+            <span class="metric-sublabel" id="balance-status-label"></span>
+        </div>
+    </div>
+    <div class="metric-card credit-card">
+        <div class="metric-icon"><i class="fas fa-arrow-down"></i></div>
+        <div class="metric-body">
+            <span class="metric-label">Total Credits</span>
+            <span class="metric-value" id="credit-value">--</span>
+        </div>
+    </div>
+    <div class="metric-card debit-card">
+        <div class="metric-icon"><i class="fas fa-arrow-up"></i></div>
+        <div class="metric-body">
+            <span class="metric-label">Total Debits</span>
+            <span class="metric-value" id="debit-value">--</span>
+        </div>
+    </div>
+    <div class="metric-card pending-card">
+        <div class="metric-icon"><i class="fas fa-hourglass-half"></i></div>
+        <div class="metric-body">
+            <span class="metric-label">Pending Settlements</span>
+            <span class="metric-value" id="pending-value">--</span>
+        </div>
+    </div>
+    <div class="metric-card month-card">
+        <div class="metric-icon"><i class="fas fa-calendar-month"></i></div>
+        <div class="metric-body">
+            <span class="metric-label">This Month</span>
+            <span class="metric-value" id="month-net">--</span>
+            <span class="metric-sublabel" id="month-detail"></span>
+        </div>
+    </div>
+</div>
+
+<div class="doc-status-row">
+    <div class="doc-status-card">
+        <div class="doc-status-icon"><i class="fas fa-scanner"></i></div>
+        <div class="doc-status-body">
+            <span class="doc-status-label">Unscanned Receipts</span>
+            <span class="doc-status-value" id="unscanned-count">0</span>
+        </div>
+    </div>
+    <div class="doc-status-card">
+        <div class="doc-status-icon"><i class="fas fa-upload"></i></div>
+        <div class="doc-status-body">
+            <span class="doc-status-label">Unreported to SEB</span>
+            <span class="doc-status-value" id="unreported-count">0</span>
+        </div>
+    </div>
+</div>
+
+<div class="charts-row">
+    <div class="chart-card">
+        <div class="chart-card-header">
+            <h3><i class="fas fa-chart-doughnut"></i> Breakdown</h3>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="breakdownChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="recent-section">
+    <div class="section-header">
+        <h3><i class="fas fa-clock-rotate"></i> Recent Transactions</h3>
+        <a href="/transactions" class="btn btn-sm btn-outline">View All</a>
+    </div>
+    <div class="recent-list" id="recent-list">
+        <div class="loading">Loading...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboard();
+});
+</script>
+{% endblock %}

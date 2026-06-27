@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#6366f1">
+    <title>Petty Cash Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar" id="topnav">
+        <div class="nav-inner">
+            <a href="/" class="nav-brand">
+                <i class="fas fa-wallet"></i>
+                <span>Petty Cash</span>
+            </a>
+            <div class="nav-title" id="page-title">Dashboard</div>
+            <div class="nav-links">
+                <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/transactions" class="nav-link {% if request.path == '/transactions' %}active{% endif %}">
+                    <i class="fas fa-list"></i>
+                    <span>Transactions</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content" id="page-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <nav class="bottom-nav">
+        <a href="/" class="bottom-nav-link {% if request.path == '/' %}active{% endif %}" data-page="dashboard">
+            <i class="fas fa-chart-pie"></i>
+            <span>Dashboard</span>
+        </a>
+        <a href="/transactions" class="bottom-nav-link {% if request.path == '/transactions' %}active{% endif %}" data-page="transactions">
+            <i class="fas fa-list"></i>
+            <span>Transactions</span>
+        </a>
+    </nav>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+    // Swipe gesture navigation
+    (function() {
+        var startX = 0, startY = 0, distX = 0, distY = 0;
+        var threshold = 80, restraint = 100;
+
+        document.addEventListener('touchstart', function(e) {
+            var touch = e.touches[0];
+            startX = touch.clientX;
+            startY = touch.clientY;
+        }, { passive: true });
+
+        document.addEventListener('touchmove', function(e) {
+            distX = e.touches[0].clientX - startX;
+            distY = e.touches[0].clientY - startY;
+        }, { passive: true });
+
+        document.addEventListener('touchend', function(e) {
+            if (Math.abs(distX) < threshold || Math.abs(distY) > restraint) {
+                distX = 0; distY = 0;
+                return;
+            }
+            var current = window.location.pathname;
+            if (distX < 0 && current === '/') {
+                window.location = '/transactions';
+            } else if (distX > 0 && current === '/transactions') {
+                window.location = '/';
+            }
+            distX = 0; distY = 0;
+        }, { passive: true });
+
+        // Update page title
+        var path = window.location.pathname;
+        var pageTitle = document.getElementById('page-title');
+        if (pageTitle) {
+            pageTitle.textContent = path === '/transactions' ? 'Transactions' : 'Dashboard';
+        }
+    })();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
