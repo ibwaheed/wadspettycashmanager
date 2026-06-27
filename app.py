@@ -315,6 +315,8 @@ def init_db():
         if user:
             user.username = username
             user.password_hash = generate_password_hash(password)
+            user.failed_attempts = 0
+            user.locked_until = None
         else:
             user = User(
                 username=username,
